@@ -2,7 +2,7 @@
 
 ;; The first three lines of this file were inserted by DrRacket. They record metadata
 ;; about the language level of this file in a form that our tools can easily process.
-#reader(lib "htdp-advanced-reader.ss" "lang")((modname Hanoi3.0) (read-case-sensitive #t) (teachpacks ()) (htdp-settings #(#t constructor repeating-decimal #t #t none #f () #f)))
+#reader(lib "htdp-advanced-reader.ss" "lang")((modname Hanoi3.2) (read-case-sensitive #t) (teachpacks ()) (htdp-settings #(#t constructor repeating-decimal #t #t none #f () #f)))
 (require racket/list)
 
 ;;=======CONSTANTS========
@@ -93,7 +93,7 @@
 (define (solve g)
   (local [(define (solve--g g visited)
             (if (solved? g)
-                (list (reverse visited) (- (length visited) 1))
+                (list (reverse visited) (length visited))
                 (solve--log (next-games-w/filter g visited) visited)))
           
           (define (solve--log log visited)
@@ -130,9 +130,11 @@
   (local [(define (newlist log visited)
             (cond [(empty? log) empty]
                   [else
-                   (if (member? (make--situation (first log)) visited)
-                       (newlist (rest log) visited)
-                       (cons (first log) (newlist (rest log) (cons (make--situation (first log)) visited))))]))]
+                   (if (and (not (empty-pole-inbetween? (remove-initial-empty-poles (make--situation (first log)))))
+                            (not (member? (make--situation (first log)) visited)))
+                       
+                       (cons (first log) (newlist (rest log) (cons (make--situation (first log)) visited)))
+                       (newlist (rest log) visited))]))]
     (newlist (next-games g) visited)))
 
 
@@ -205,7 +207,7 @@
 
 (define (find-poles g r)
   (local [(define (find-pole g rsf acc gprev)
-            (cond [(empty? g) (reverse rsf)]
+            (cond [(empty? g) rsf]
                   [else
                    (find-pole (rest g)
                               (if (and (changed? (putit g r 0) gprev) (or (empty? (first g)) (< r (first (first g)))))
@@ -214,155 +216,3 @@
                               (add1 acc)
                               (rest gprev))]))]
     (find-pole (takeit g r) empty 0 g)))
-
-
-
-
-
-
-
-;;==========HELPERS=============
-
-
-
-;; Game -> (listof RING)
-;; produce the list of rings that can be moved 
-
-; (check-expect (can-move-rings STARTB) (list 1))
-; (check-expect (can-move-rings GAME2) (list 1 2))
-
-
-(define (can-move-rings g)
-  (filter (λ(x) (and (can-take? g x) (can-drop? g x))) ALL-VALS))
-
-
-
-;; Game Ring -> Game
-;; produce the new game without the given ring
-
-; (check-expect (takeit STARTB 1) (list '(2 3 4)
-;                                       '()
-;                                       '()))
-; ;1 | |     | | |  
-; ;2 | |     2 | |   
-; ;3 | |  -> 3 | |
-; ;4 | |     4 | |
-; 
-; 
-; (check-expect (takeit GAME2 2) (list '(3 4)
-;                                      '(1)
-;                                      '()))
-
-
-(define (takeit g r)
-  (cond [(empty? g) empty]
-        [else
-         (cons (if (empty? (first g))
-                   (first g)
-                   (if (= (first (first g)) r)
-                       (rest (first g))
-                       (first g)))
-               (takeit (rest g) r))]))
-
-
-;; Game Ring Natural -> Game
-;; Put a ring onto a given pole
-
-; (check-expect (putit (takeit STARTB 1) 1 1) (list '(2 3 4)
-;                                                   '(1)
-;                                                   '()))
-; (check-expect (putit (takeit GAME2 2) 2 2) (list '(3 4)
-;                                                  '(1)
-;                                                  '(2)))
-
-
-(define (putit g r pole)
-  (if (= pole 0)
-      (cons (cons r (first g)) (rest g))
-      (cons (first g) (putit (rest g) r (sub1 pole)))))
-
-
-
-;; Game Ring -> Boolean
-;; produce true if the ring can be taken
-;; ASSUME: Board is not BLANK
-
-; (check-expect (can-take? STARTB 1) true)
-; (check-expect (can-take? STARTB 2) false)
-; (check-expect (can-take? GAME2 2) true)
-
-
-(define (can-take? g r)
-  (cond [(empty? g) false]
-        [else
-         (if (not (empty? (first g)))
-             (if (= (first (first g)) r)
-                 true
-                 (can-take? (rest g) r))
-             (can-take? (rest g) r))]))
-
-
-
-;; Game Ring -> Boolean
-;; produce true if the ring can be placed in the game
-;; ASSUME: Board not BLANK and Valid
-
-; (check-expect (can-drop? (list '(2 3 4)
-;                                '()
-;                                '()) 1) true)
-; (check-expect (can-drop? (list '(1 4)
-;                                '()
-;                                '(2)) 3) true)
-; (check-expect (can-drop? (list '(3)
-;                                '(2)
-;                                '(1)) 4) false)
-
-
-
-(define (can-drop? g r)
-  (cond [(empty? g) false]
-        [else
-         (if (not (empty? (first g)))
-             (if (> (first (first g)) r)
-                 true
-                 (can-drop? (rest g) r))
-             true)]))
-
-
-;; Game Game -> Boolean
-;; true if situation is unchanged if ring is put
-
-; (check-expect (changed? (putit (takeit STARTB 1) 1 0) STARTB) false)
-; (check-expect (changed? (putit (takeit STARTB 1) 1 2) STARTB) true)
-
-
-(define (changed? g gprev)
-  (or (not (= (length (make--situation g)) (length (make--situation gprev))))
-      (not (andmap = (make--situation g) (make--situation gprev)))))
-
-
-;; Game -> (listof Ring)
-;; rewrite Game (which is list of list of rings) as a list of rings. 0 is the end of a pole
-
-; (check-expect (make--situation (list '(1 2 3 4)
-;                                      '()
-;                                      '()))
-;               (list 1 2 3 4 0 0 0))
-; (check-expect (make--situation (list '(1 4)
-;                                      '(2)
-;                                      '(3)))
-;               (list 1 4 0 2 0 3 0))
-; (check-expect (make--situation (list '(3)
-;                                      '()
-;                                      '(1 2)))
-;               (list 3 0 0 1 2 0))
-
-
-
-(define (make--situation g)
-  (cond [(empty? g) empty]
-        [else
-         (append (first g) '(0) (make--situation (rest g)))]))
-
-
-(solve STARTB)
