@@ -2,7 +2,7 @@
 
 ;; The first three lines of this file were inserted by DrRacket. They record metadata
 ;; about the language level of this file in a form that our tools can easily process.
-#reader(lib "htdp-advanced-reader.ss" "lang")((modname hanoi4.1) (read-case-sensitive #t) (teachpacks ()) (htdp-settings #(#t constructor repeating-decimal #t #t none #f () #f)))
+#reader(lib "htdp-advanced-reader.ss" "lang")((modname Hanoi4.3) (read-case-sensitive #t) (teachpacks ()) (htdp-settings #(#t constructor repeating-decimal #t #t none #f () #f)))
 (require racket/list)
 ;; all changes are based on 3.0
 (define POLES 5)
@@ -20,11 +20,16 @@
                 (solve--log (next-games-w/filter g visited) visited)))
           
           (define (solve--log log visited)
-            (solve--gm (first log) (cons (make--situation (first log)) visited)))]
-    
+            (cond [(empty? log) false]
+                  [else
+                   (local [(define try (solve--gm (first log) (cons (make--situation (first log)) visited)))]
+                     (if (not (false? try))
+                         try
+                         (solve--log (rest log) visited)))]))
+          ]
     (solve--gm g (list (make--situation g)))))
 
-;; criterion to win !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! this changed !!!!! (3.2)
+;; criterion to win
 (define (solve? g)
   (ormap (λ(x) (= (length x) RINGS)) (rest g)))
 
@@ -34,8 +39,6 @@
   (local [(define (newlst g pre)
             (cond [(empty? g) empty]
                   [else
-                   ;;(if (ormap (λ(x) (fixed? x 2)) g)
-                   ;;  (takeit
                    (if (member? (make--situation (first g)) pre)
                        (newlst (rest g) pre)
                        (cons (first g) (newlst (rest g) (cons (make--situation (first g)) pre))))]))]
@@ -64,63 +67,31 @@
                    (cons (putit (takeit g val) val (first movs))
                          (val-game (rest movs)))]))]
     (val-game (;find-poles-w/filter
-               find-poles-w/-fixed
+               find-poles
                g val))))
 
-#;#;#;
-;; !!!!!!!!!!!! find pole with filter !!!???? something wrong here
-(check-expect (find-poles-w/filter (list '()
-                                         '(3 4)
-                                         '(2)
-                                         '()
-                                         '(1))
-                                   1) (list 2 1))
-(check-expect (find-poles-w/filter (list '(3 4)
-                                         '(2)
-                                         
-                                         '(1))
-                                   1) (list 1 0))
-(define (find-poles-w/filter g r)
-  (local [(define (check-not-empty lop x)
-            (not (empty? (list-ref lop x))))
-          
-          (define (check-empty lop x)
-            (empty? (list-ref lop x)))
-          
-          (define try (find-poles g r))
-          
-          (define (1-length? lop r)
-            (cond [(empty? lop) false]
+
+
+
+
+
+;; find valid pole to move for a value !!!!!!!!!!!!!!!!!!!!!! this changed  !!!! (3.2)
+(define (find-poles g num)
+  (local [(define (find-pole g rsf acc g1 ginitial)
+            (cond [(empty? g) rsf] ; here
                   [else
-                   (if (member? r (first lop))
-                       (= (length (first lop)) 1)
-                       (1-length? (rest lop) r))]))]
-    
-    (sort (append (filter (λ(x) (check-not-empty g x)) try)
-                  (if (1-length? g r)
-                      empty
-                      (local [(define try2 (filter (λ(x) (check-empty g x)) try))]
-                        (if (not (empty? try2))
-                            (list (first try2))
-                            empty))))
-          >)))
-
-
-(define (find-poles-w/-fixed g r)
-  (local [(define (find-poles g num)
-            (local [(define (find-pole g rsf acc g1)
-                      (cond [(empty? g) rsf] ; here
-                            [else
-                             (find-pole (rest g)
-                                        (if (and (changed? (putit g num 0) g1) (or (empty? (first g)) (< num (first (first g)))))
-                                            (cons acc rsf)
-                                            rsf)
-                                        (add1 acc)
-                                        (rest g1))]))]
-              (find-pole (takeit g num) empty 0 g)))]
-    (if (fixed? g (+ r 1))
-        (find-fixed g (+ r 1))
-        (find-poles g r))))
+                   (find-pole (rest g)
+                              (if (and (changed? (putit g num 0) g1)
+                                       (if (num-alone? ginitial num)
+                                           
+                                           (andmap (λ(x) (< num x)) (first g))
+                                           (or (empty? (first g)) (< num (first (first g))))))
+                                  (cons acc rsf)
+                                  rsf)
+                              (add1 acc)
+                              (rest g1)
+                              ginitial)]))]
+    (find-pole (takeit g num) empty 0 g g)))
 
 (define (find-fixed g r)
   (local [(define (find-the-fixed g acc)
@@ -130,23 +101,6 @@
                        (list acc)
                        (find-the-fixed (rest g) (add1 acc)))]))]
     (find-the-fixed g 0)))
-
-
-
-#;
-;; find valid pole to move for a value !!!!!!!!!!!!!!!!!!!!!! this changed  !!!! (3.2)
-(define (find-poles g num)
-  (local [(define (find-pole g rsf acc g1)
-            (cond [(empty? g) rsf] ; here
-                  [else
-                   (find-pole (rest g)
-                              (if (and (changed? (putit g num 0) g1) (or (empty? (first g)) (< num (first (first g)))))
-                                  (cons acc rsf)
-                                  rsf)
-                              (add1 acc)
-                              (rest g1))]))]
-    (find-pole (takeit g num) empty 0 g)))
-
 
 
 ;; movable values !!!!!!!!!!!!!!!!!!!!!! this changed !!!!!!!! 
@@ -235,8 +189,8 @@
               false)
 (define (fixed? g r)
   (cond [(= r RINGS) (if (member? r (first g))
-                         false
-                         true)]
+                           false
+                           true)]
         [else
          (local [(define (isfixed? lop r) 
                    (cond [(empty? lop) false]
@@ -250,7 +204,19 @@
 ;; avoid the move from empty pole to empty pole
 
 
-
+(define (num-alone? g num)
+  (local [(define pole 0)
+          (define position  (first(find-fixed g num)))
+          (define acc false)]
+    (begin
+      (for-each (λ(x)
+                  (begin
+                    (if (and (= pole position) (empty? x))
+                        (set! acc true)
+                        void)
+                    (set! pole (+ pole 1))))
+                (takeit g num))
+      acc)))
 
 
 
